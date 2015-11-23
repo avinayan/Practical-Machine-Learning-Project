@@ -1,0 +1,99 @@
+---
+title: "Predicting the Fashion of Unilateral Dumbbell Biceps Curl "
+author: "Avinayan Senthi Velayutham"
+date: "November 22, 2015"
+output: html_document
+---
+
+##Introduction
+In this project, we use the data from Human Activity Recognition Project to understand how correctly the Unilateral Dumbbell Biceps Curl exercise has been performed. In collecting this data, Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E). Data from this activity was collected over a period of time along with many other aspects of the exercise. 
+
+In this project, we will use this data to construct a model that will accurately predicy the correct classe of the Dumbbell Biceps Curl based on the available and useful features.
+
+## Data Preparation
+
+To perform this analysis, we will have first perform a sequence of activities which will split the data that we have into training and test data sets. The Training and Test Datasets have been separated already and provided for this analysis. We load the data, but will not use the test data until the final model testing and validation. It is important that the test data is not used before so as to avoid overfitting and other model construction errors.
+
+To get a model with better prediction and performance, we further split the Training data into two. 60% of this Training Data will be used to train and find the better model and then that will be validated against the other 40% of the Training Data (which now is serving as the test data).
+
+
+```{r}
+library(caret)
+library(rpart)
+library(e1071)
+library(randomForest)
+TrainData <- read.csv("pml-training.csv")
+TestData <- read.csv("pml-testing.csv")
+
+set.seed(112233)
+TrainPart <- createDataPartition(y = TrainData$classe, p = 0.6, list = FALSE)
+TrainDataP1 <- TrainData[TrainPart, ]
+TrainDataP2 <- TrainData[-TrainPart, ]
+```
+
+Next we clean up all the 4 datasets (Train Part 1, Train Part 2, Full Training Set and Test Set) and remove features that do no make sense towards the modeling activity, that do not have not of variance and mostly have NAs.
+
+```{r, echo = TRUE}
+TrainDataP1 <- TrainDataP1[, -(1:5)]
+TrainDataP2 <- TrainDataP2[, -(1:5)]
+TrainData <- TrainData[, -(1:5)]
+TestData <- TestData[, -(1:5)]
+
+ZeroVar <- nearZeroVar(TrainDataP1)
+TrainDataP1 <- TrainDataP1[, -ZeroVar]
+TrainDataP2 <- TrainDataP2[, -ZeroVar]
+TrainData <- TrainData[, -ZeroVar]
+TestData <- TestData[, -ZeroVar]
+
+SignificantlyNA <- sapply(TrainDataP1, function(x) mean(is.na(x))) > 0.9
+TrainDataP1 <- TrainDataP1[, !SignificantlyNA]
+TrainDataP2 <- TrainDataP2[, !SignificantlyNA]
+
+SignificantlyNA1 <- sapply(TrainData, function(x) mean(is.na(x))) > 0.9
+TrainData <- TrainData[, !SignificantlyNA1]
+TestData <- TestData [, !SignificantlyNA1]
+```
+
+## rpart Model
+
+First we try creating a regular Classification and Regression Tree (CART) analysis using the `rpart` package. We will try to see how well this model performs my constructing a Confusion Matrix.
+
+```{r, echo = TRUE}
+FirstModel <- train(classe ~ ., method = 'rpart', data = TrainDataP1)
+prediction <- predict(FirstModel, newdata=TrainDataP2)
+confusionMatrix(TrainDataP2$classe, prediction)
+```
+
+As you can see, this model does predict the classes well, but there is still lot of scope for improvement. Therefore, we might want to take advantage of one of the ensemble methods. So, we will next try the 'Random Forest' model to see if this significantly improves the classification.
+
+## Random Forest Model
+
+The Random Forest Model is is build along with cross validation. Over different experiments, it was found that 2-fold cross validation achieved significant accuracy and also had a reduced run-time for the algorith compared to k > 2 folds.
+
+```{r, echo = TRUE}
+CrossVal <- trainControl(method = "cv", number = 2)
+RFModel <- train(classe ~ ., method = "rf", data = TrainDataP1, trControl = CrossVal)
+
+RFprediction <- predict(RFModel, newdata=TrainDataP2)
+confusionMatrix(TrainDataP2$classe, RFprediction)
+```
+
+As you can see there were very few misclassifications in this model.
+
+We next, will try to repeat this 'Random Forest' procedure for the entire training set and so that we can get a final Model.
+
+```{r, echo = TRUE}
+CrossVal <- trainControl(method = "cv", number = 2)
+RFModelFinal <- train(classe ~ ., method = "rf", data = TrainData, trControl = CrossVal)
+```
+
+## Conclusion (Predictions on the Test Set)
+
+Using the final model obtained by using the entire Training set, we will now predict the `classe` values for the 20 records on the Test Set.
+```{r, echo = TRUE}
+RFpredictionFinal <- predict(RFModelFinal, newdata=TestData)
+RFpredictionFinal
+TestData$classe <- RFpredictionFinal
+```
+
+The predictions are shown above.
